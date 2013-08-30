@@ -213,20 +213,13 @@ Client.prototype.disconnect = function ( message, callback ) { // {{{
     }
     this.conn.end();
 }; // }}}
-Client.prototype.send = function(command, formatted) { // {{{
-    var args = Array.prototype.slice.call(arguments);
-
-    // Note that the command arg is included in the args array as the first element
-
-    if (formatted !== true && (args[args.length-1].match(/\s/) || args[args.length-1].match(/^:/) || args[args.length-1] === "") ) {
-        args[args.length-1] = ":" + args[args.length-1];
-    }
+Client.prototype.send = function(command) {
 
     if ( this.opt.debug )
-        util.log('SEND: ' + args.join(" "));
+        util.log('SEND: ' + command);
 
     if ( ! this.conn.requestedDisconnect ) {
-        this.conn.write(args.join(" ") + "\r\n");
+        this.conn.write(command + "\r\n");
     }
 }; // }}}
 Client.prototype.activateFloodProtection = function(interval) { // {{{
