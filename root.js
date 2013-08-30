@@ -1,7 +1,7 @@
 #!/bin/env node
 
 var express = require('express');
-var DEBUG = true;
+var http = require('http');
 
 /**
  *  Define the sample application.
@@ -10,14 +10,15 @@ var Qwebirc = function() {
 
     //  Scope.
     var self = this;
-
-    /**
-     *  Set up server IP address and port # using env variables/defaults.
-     */
-    self.setupVariables = function() {
-        //  Set the environment variables we need.
-        self.port = process.env.PORT || process.env.OPENSHIFT_NODEJS_PORT || 8080;
+    self.options = {
+        DEBUG: false,
+        IRCSERVER: 'irc.gamesurge.net', //irc server adress
+        IRCPORT: 6667, //irc servers port
+        USE_WEBSOCKETS: true, //whether to use websockets - some servers dont support the protocol. Fallbacks are done through socket.io
+        APP_PORT: process.env.PORT || process.env.OPENSHIFT_NODEJS_PORT || 8080
     };
+
+    self.clients = [];
 
     /**
      *  terminator === the termination handler
@@ -30,6 +31,12 @@ var Qwebirc = function() {
                        Date(Date.now()), sig);
            process.exit(1);
         }
+
+        var client;
+        while(client = self.clients.pop()) {
+            client.quit();
+        }
+
         console.log('%s: Node server stopped.', Date(Date.now()) );
     };
 
@@ -53,23 +60,30 @@ var Qwebirc = function() {
      *  Start the server (starts up the sample application).
      */
     self.start = function() {
+        //http://stackoverflow.com/questions/10191048/socket-io-js-not-found/10192084#10192084
+        var options  = self.options;
         //  Start the app on the specific interface (and port).
-        self.app.listen(self.port);
-        var io = require('socket.io').listen(80);
-        if(!DEBUG) {
-            io.set("log level", 1);
-        }
+        self.server.listen(options.APP_PORT);
+        var io = require('socket.io').listen(self.server);
+        io.configure(function() {
+            if(!options.DEBUG) {
+                io.set("log level", 1);
+            }
+            if(!options.USE_WEBSOCKETS) {
+                io.set("transports", ["xhr-polling"]);
+                io.set("polling duration", 10);
+            }
+        });
         io.sockets.on('connection', function (socket) {
-            
-            socket.once('irc', function(nick, opts) {//connect to the server
+            socket.once('irc', function(ircopts) {//connect to the server
                 var timers = {};
                 var irc  = require('./irc.js');
 
                 var client = new irc.Client(
-                    'irc.gamesurge.net',
-                    nick || 'testaccount',
-                    opts
+                    options.IRCSERVER,
+                    ircopts
                 );
+                self.clients.push(client);
 
                 client.addListener('raw', function(message) {
                     socket.emit("raw", {
@@ -116,13 +130,13 @@ var Qwebirc = function() {
      */
     self.initializeServer = function() {
         self.app = express();
+        self.server = http.createServer(self.app);
         // compress content
         self.app.use(express.compress());
         self.app.use(express.static(__dirname + '/static', { maxAge: 1 }));
     };
 
 
-    self.setupVariables();
     // self.setupTerminationHandlers();
     self.initializeServer();
 };
