@@ -5,7 +5,7 @@ Qwebirc server using node and socket.io
   
 ```
 npm install  
-node root
+node config
 ```
 If run local navigate to 127.0.0.1:3000
 

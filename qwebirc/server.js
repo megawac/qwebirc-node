@@ -2,21 +2,24 @@
 
 var express = require('express');
 var http = require('http');
+var util = require('util');
+var _ = require('underscore');
 
 /**
  *  Define the sample application.
  */
-var Qwebirc = function() {
+var Qwebirc = function(options) {
 
     //  Scope.
     var self = this;
-    self.options = {
+    self.options = _.extend({
         DEBUG: false,
         IRCSERVER: 'irc.gamesurge.net', //irc server adress
         IRCPORT: 6667, //irc servers port
         USE_WEBSOCKETS: true, //whether to use websockets - some servers dont support the protocol. Fallbacks are done through socket.io
-        APP_PORT: process.env.PORT || process.env.OPENSHIFT_NODEJS_PORT || 8080
-    };
+        APP_PORT: process.env.PORT || 8080,
+        root: process.cwd()
+    }, options);
 
     self.clients = [];
 
@@ -27,7 +30,7 @@ var Qwebirc = function() {
      */
     self.terminator = function(sig){
         if (typeof sig === "string") {
-           console.log('%s: Received %s - terminating sample app ...',
+           util.log('%s: Received %s - terminating sample app ...',
                        Date(Date.now()), sig);
            process.exit(1);
         }
@@ -37,7 +40,7 @@ var Qwebirc = function() {
             client.quit();
         }
 
-        console.log('%s: Node server stopped.', Date(Date.now()) );
+        util.log('%s: Node server stopped.', Date(Date.now()) );
     };
 
 
@@ -75,6 +78,8 @@ var Qwebirc = function() {
             }
         });
         io.sockets.on('connection', function (socket) {
+            var address = socket.handshake.address;
+            util.log('Connection from ' + address.address + ':' + address.port);
             socket.once('irc', function(ircopts) {//connect to the server
                 var timers = {};
                 var irc  = require('./irc.js');
@@ -133,7 +138,7 @@ var Qwebirc = function() {
         self.server = http.createServer(self.app);
         // compress content
         self.app.use(express.compress());
-        self.app.use(express.static(__dirname + '/static', { maxAge: 1 }));
+        self.app.use(express.static(options.ROOT + '/static', { maxAge: 1 }));
     };
 
 
@@ -141,6 +146,4 @@ var Qwebirc = function() {
     self.initializeServer();
 };
 
-// run server
-var server = new Qwebirc();
-server.start();
+exports = module.exports = Qwebirc;
