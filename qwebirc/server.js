@@ -39,8 +39,6 @@ var Qwebirc = function(options) {
             var message = Date(Date.now()) + ': Received %s - terminating app ... '+ sig;
             util.log(message);
 
-            io.sockets.emit("terminated", message);
-
             process.exit(1);
         }
 
@@ -88,6 +86,7 @@ var Qwebirc = function(options) {
         });
         io.sockets.on('connection', function (socket) {
             var address = socket.handshake.address;
+            var clientid;
             util.log('\n\nConnection from ' + address.address + ':' + address.port + "\n\n ---- Open connections: " + self.connections + "\n\n");
             if(self.connections + 1 >= self.options.MAX_CONNETIONS) {
                 socket.emit('max_connections');
@@ -96,7 +95,7 @@ var Qwebirc = function(options) {
 
             function connect(ircopts) {
                 var irc  = require('./irc.js');
-                var clientid = ircopts.clientID;
+                clientid = ircopts.clientID;
                 var client = new irc.Client(
                     options.IRCSERVER,
                     ircopts
