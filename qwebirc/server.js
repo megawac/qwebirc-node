@@ -13,15 +13,20 @@ var Qwebirc = function(options) {
     //  Scope.
     var self = this;
     self.options = _.extend({
-        DEBUG: false,
-        IRCSERVER: 'irc.gamesurge.net', //irc server adress
+        DEBUG: true,
         IRCPORT: 6667, //irc servers port
         USE_WEBSOCKETS: true, //whether to use websockets - some servers dont support the protocol. Fallbacks are done through socket.io
+        MAX_CONNETIONS: Infinity,
         APP_PORT: process.env.PORT || 8080,
-        root: process.cwd()
+        root: process.cwd(),
+
+        httpTimeout: 60000 //time in ms before we drop a clients socket
     }, options);
 
-    self.clients = [];
+    if(!self.options.IRCSERVER) throw "init without irc server";
+
+    self.clients = {};//hash of clients (clientIds)
+    self.connections = 0;
 
     /**
      *  terminator === the termination handler
@@ -29,16 +34,20 @@ var Qwebirc = function(options) {
      *  @param {string} sig  Signal to terminate on.
      */
     self.terminator = function(sig){
+        console.log("ending" + sig);
         if (typeof sig === "string") {
-           util.log('%s: Received %s - terminating sample app ...',
-                       Date(Date.now()), sig);
-           process.exit(1);
+            var message = Date(Date.now()) + ': Received %s - terminating app ... '+ sig;
+            util.log(message);
+
+            io.sockets.emit("terminated", message);
+
+            process.exit(1);
         }
 
-        var client;
-        while(client = self.clients.pop()) {
-            client.quit();
-        }
+        _.each(self.clients, function(client, id) {
+            client.client.quit();
+            delete self.clients[id];
+        });
 
         util.log('%s: Node server stopped.', Date(Date.now()) );
     };
@@ -79,17 +88,31 @@ var Qwebirc = function(options) {
         });
         io.sockets.on('connection', function (socket) {
             var address = socket.handshake.address;
-            util.log('Connection from ' + address.address + ':' + address.port);
-            socket.once('irc', function(ircopts) {//connect to the server
-                var timers = {};
-                var irc  = require('./irc.js');
+            util.log('\n\nConnection from ' + address.address + ':' + address.port + "\n\n ---- Open connections: " + self.connections + "\n\n");
+            if(self.connections + 1 >= self.options.MAX_CONNETIONS) {
+                socket.emit('max_connections');
+                socket.disconnect();
+            }
 
+            function connect(ircopts) {
+                var irc  = require('./irc.js');
+                var clientid = ircopts.clientID;
                 var client = new irc.Client(
                     options.IRCSERVER,
                     ircopts
                 );
-                self.clients.push(client);
 
+                listen(client);
+
+                self.clients[clientid] = {
+                    client: client
+                }
+                self.connections += 1;
+                socket.emit("connected");
+            }
+
+            function listen(client) {
+                //wire up client/soc events
                 client.addListener('raw', function(message) {
                     socket.emit("raw", {
                         raw: message
@@ -101,27 +124,30 @@ var Qwebirc = function(options) {
                 });
 
                 socket.on("quit", function() {
-                    client.disconnect();
+                    client.quit();
                 });
 
-                socket.on("disconnect", function() {//wait a bit for a reconnect
-                    timers.quitting = setTimeout(function() {
-                        client.disconnect();
-                        delete timers.quitting;
-                    }, 120 * 1000);
+                socket.on("disconnect", function() {
+                    self.clients[clientid].timer = setTimeout(function() {
+                        client.quit();
+                        delete self.clients[clientid];
+                        self.connections -= 1;
+                    }, 30 * 1000);//wait 30 secs to kill the connection
                 });
+            }
 
-                socket.on("retry", function() {
-                    if(timers.quitting) {
-                        socket.emit("connected");
-                        clearTimeout(timers.quitting);
-                    }
-                    else {
-                        client.connect();
-                    }
-                });
+            socket.once('irc', connect);
+            socket.on("reconnect", function(opts) {
+                console.log("retrying");
+                socket.emit("echo", "retrying");
 
-                socket.emit("connected");
+                if(_.has(self.clients, opts.clientID)) {
+                    var client = self.clients[opts.clientID];
+                    clearTimeout(client.timer);
+                    listen(client.client);
+                } else { //create a new connection
+                    connect(opts);
+                }
             });
             socket.on("echo", function(data) {
                 socket.emit("echo", data);
