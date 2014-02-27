@@ -14,3 +14,7 @@ Note: heroku doesnt support websockets so its using xhr long polls :/
 
 TODO:  
 Currently doesn't support a true webirc server and just connects through the servers ip address.
+
+###Deprecated
+
+Deprecated in favour of the upcoming release of the Twisted implementation...
