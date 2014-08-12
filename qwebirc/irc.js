@@ -1,32 +1,13 @@
-/*
-    irc.js - Node JS IRC client library
-
-    (C) Copyright Martyn Smith 2010
-
-    This library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-var net = require('net');
-var util = require('util');
-var tls = require('tls');
-var _ = require('underscore');
+var net = require("net");
+var util = require("util");
+var tls = require("tls");
+var _ = require("underscore");
 
 var DEFAULT_OPTIONS = {
-    server: '',
+    server: "",
     nickname: null,
     password: null,
-    username: 'qwebirc',
+    username: "qwebirc",
     realname: "a",
     port: 6667,
     debug: false,
@@ -43,7 +24,12 @@ var DEFAULT_OPTIONS = {
     floodProtectionDelay: 1000,
     stripColors: false,
     channelPrefixes: "&#",
-    messageSplit: 512
+    messageSplit: 512,
+
+    webirc: {
+        enable: false,
+        password: "foo"
+    }
 };
 
 function Client(server, opts) {
@@ -80,18 +66,23 @@ _.extend(Client.prototype, {
         }
         retryCount = retryCount || 0;
         if (_.isFunction(callback)) {
-            this.once('registered', callback);
+            this.once("registered", callback);
         }
         var self = this;
         var options = self.options;
 
         function connect() {
+            if (options.webirc.enable) {
+                self.send(util.format("WEBIRC %s qwebirc %s %s", options.webirc.password, options.hostname, options.ip));
+            }
+
+            self.send(util.format("USER %s %d %s :%s", options.username, 8, options.ip, options.realname));
             if (options.password !== null) {
                 self.send(util.format("PASS %s", options.password));
             }
-            util.log('Sending irc NICK/USER');
+            util.log("Sending irc NICK/USER");
             self.send(util.format("NICK %s", options.nickname));
-            self.send(util.format("USER %s %d %s :%s", options.username, 8, "*", options.realname));
+
             self.emit("connect");
         }
         // try to connect to the server
@@ -102,9 +93,9 @@ _.extend(Client.prototype, {
             self.conn = tls.connect(options.port, options.server, creds, function() {
                 // callback called only after successful socket connection
                 self.conn.connected = true;
-                if (self.conn.authorized || (options.selfSigned && (self.conn.authorizationError === 'DEPTH_ZERO_SELF_SIGNED_CERT' || self.conn.authorizationError === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE')) || (options.certExpired && self.conn.authorizationError === 'CERT_HAS_EXPIRED')) {
+                if (self.conn.authorized || (options.selfSigned && (self.conn.authorizationError === "DEPTH_ZERO_SELF_SIGNED_CERT" || self.conn.authorizationError === "UNABLE_TO_VERIFY_LEAF_SIGNATURE")) || (options.certExpired && self.conn.authorizationError === "CERT_HAS_EXPIRED")) {
                     // authorization successful
-                    self.conn.setEncoding('utf-8');
+                    self.conn.setEncoding("utf-8");
                     connect();
                 } else {
                     // authorization failed
@@ -117,9 +108,9 @@ _.extend(Client.prototype, {
         }
         self.conn.requestedDisconnect = false;
         self.conn.setTimeout(0);
-        self.conn.setEncoding('utf8');
+        self.conn.setEncoding("utf8");
         self.conn.addListener("connect", connect);
-        var buffer = '';
+        var buffer = "";
         self.conn.addListener("data", function(chunk) {
             buffer += chunk;
             var lines = buffer.split("\r\n");
@@ -127,7 +118,7 @@ _.extend(Client.prototype, {
             lines.forEach(function(line) {
                 // var message = parseMessage(line, options.stripColors);
                 try {
-                    self.emit('raw', line);
+                    self.emit("raw", line);
                 } catch (err) {
                     if (!self.conn.requestedDisconnect) {
                         throw err;
@@ -135,23 +126,25 @@ _.extend(Client.prototype, {
                 }
             });
         });
+
         self.conn.addListener("end", function() {
-            if (options.debug) util.log('Connection got "end" event');
+            if (options.debug) util.log("Connection got 'end' event");
         });
+
         self.conn.addListener("close", function() {
-            if (options.debug) util.log('Connection got "close" event');
+            if (options.debug) util.log("Connection got 'close' event");
             if (self.conn.requestedDisconnect) return;
-            if (options.debug) util.log('Disconnected: reconnecting');
+            if (options.debug) util.log("Disconnected: reconnecting");
             if (options.retryCount !== null && retryCount >= options.retryCount) {
                 if (options.debug) {
-                    util.log('Maximum retry count (' + options.retryCount + ') reached. Aborting');
+                    util.log("Maximum retry count (" + options.retryCount + ") reached. Aborting");
                 }
-                self.emit('abort', options.retryCount);
+                self.emit("abort", options.retryCount);
                 return;
             }
 
             if (options.debug) {
-                util.log('Waiting ' + options.retryDelay + 'ms before retrying');
+                util.log("Waiting " + options.retryDelay + "ms before retrying");
             }
             setTimeout(function() {
                 self.connect(retryCount + 1);
@@ -167,7 +160,7 @@ _.extend(Client.prototype, {
     disconnect: function(callback) {
         this.conn.requestedDisconnect = true;
         if (_.isFunction(callback)) {
-            this.conn.once('end', callback);
+            this.conn.once("end", callback);
         }
         this.conn.end();
     },
@@ -179,7 +172,7 @@ _.extend(Client.prototype, {
 
     send: function(command) {
         if (!this.conn.requestedDisconnect) {
-            if (this.options.debug) util.log('SEND: ' + command);
+            if (this.options.debug) util.log("SEND: " + command);
             this.conn.write(command + "\r\n");
         }
         return this;

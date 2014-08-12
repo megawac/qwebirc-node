@@ -7,7 +7,12 @@ var options =  {
     APP_PORT: process.env.PORT || 8080,
     ROOT: __dirname,
 
-    httpTimeout: 60000 //time in ms before we drop a clients socket
+    webirc: {
+        enable: false,
+        password: "foo"
+    },
+
+    httpTimeout: 30000 //time in ms before we drop a clients socket
 };
 
 var Qwebirc = require('./qwebirc/server.js');
